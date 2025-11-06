@@ -59,14 +59,7 @@ locale-gen
 echo "cojones-arch" > /etc/hostname
 
 pacman -Sy
-pacman -Syu \
-    # Servicios de red / wifi
-    systemd-networkd \
-    systemd-resolved \
-    iwd \
-
-    # Nano (odio vim)
-    nano \
+pacman -Syu wpa_supplicant wireless_tools iw dhcpcd nano
 
 ## Swaaaap
 dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress
