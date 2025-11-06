@@ -1,6 +1,12 @@
 #!/bin/bash
+disco="/dev/sda"
+hostname="shamshung-pt2"
 
-echo "------> Verificando conexión a internet..."
+SSID="Sistemas Operativos en Red"
+PASS="123456789"
+INTERFACE=$(iw dev | awk '$1=="Interface"{print $2; exit}')
+
+echo "=== Verificando conexión a internet ==="
 # Hace ping a google, si sale bien exit 0 :D
 if ping -c 2 -W 2 8.8.8.8; then
     echo "Conexión a internet: OK"
@@ -12,8 +18,7 @@ fi
 
 
 # Particionado
-echo "------> Instalando y particionando: $disco"
-disco="/dev/sda"
+echo "=== Instalando y particionando: $disco ==="
 
 fdisk "$disco" <<EOF
 o
@@ -30,14 +35,13 @@ EOF
 mkfs.ext4 /dev/sda1
 mount --mkdir /dev/sda1 /mnt
 
-echo "------>> Partición creada en $disco"
+echo "=== Partición creada en $disco ==="
 
 
 # Instalacion y set up de la instalacion
-echo "------> Preparar sistema operativo"
+echo "=== Preparar sistema operativo ==="
 ## Paquetes base del sistema
 pacstrap -K /mnt base linux linux-firmware
-                # optimizar la intalacion de firmwres, se intalan demasiados <<<<
 
 genfstab -U /mnt >> /mnt/etc/fstab
 cat /mnt/etc/fstab
@@ -53,13 +57,21 @@ timedatectl
 
 echo "LANG=es_ES.UTF-8" > /etc/locale.conf
 echo "KEYMAP=es" > /etc/locale.conf
-setfont sun12x22.psfu.gz
 locale-gen
 
-echo "cojones-arch" > /etc/hostname
+echo "$hostname" > /etc/hostname
 
 pacman -Sy
-pacman -Syu wpa_supplicant wireless_tools iw dhcpcd nano
+pacman -Syu wpa_supplicant wireless_tools iw dhcpcd iproute2 iputils impala nano
+
+echo "=== Configurando Wi-Fi ==="
+
+# Generar configuración WPA
+wpa_passphrase "$SSID" "$PASS" > /etc/wpa_supplicant/wpa_supplicant.conf
+
+# Crear servicio de arranque automático
+systemctl enable wpa_supplicant@$INTERFACE.service
+systemctl enable dhcpcd@$INTERFACE.service
 
 ## Swaaaap
 dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress
@@ -73,26 +85,27 @@ fi
 
 swapon --show
 
-## Configuracion del bootloader (syslinux :3)
-pacman -S syslinux
-sudo dd bs=440 count=1 conv=notrunc if=/usr/lib/syslinux/bios/mbr.bin of=/dev/sda
-syslinux --install /dev/sda1
+## Configuracion del bootloader (vamos a usar grub como persona NORMAL)
+echo "=== Instalando GRUB ==="
+pacman -Sy --noconfirm grub
 
-mkdir -p /boot/syslinux
-cp /usr/lib/syslinux/bios/*.c32 /boot/syslinux
+echo "==> Instalando el cargador en $disco..."
+grub-install --target=i386-pc "$disco"
 
-cat <<EOF > /boot/syslinux/syslinux.cfg
-UI menu.c32
-PROMPT 0
-TIMEOUT 30
-DEFAULT arch
+echo "==> Generando configuración de GRUB..."
+grub-mkconfig -o /boot/grub/grub.cfg
 
-LABEL arch
-    LINUX /vmlinuz-linux
-    INITRD /initramfs-linux.img
-    APPEND root=/dev/sda1 rw
+echo "==> Aplicando configuración para arranque instantáneo..."
+cat <<'EOF' > /etc/default/grub
+GRUB_TIMEOUT=0
+GRUB_TIMEOUT_STYLE=hidden
+GRUB_DEFAULT=0
+GRUB_DISABLE_SUBMENU=y
+GRUB_HIDDEN_TIMEOUT_QUIET=true
+GRUB_DISABLE_RECOVERY=true
+GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 nowatchdog"
+GRUB_CMDLINE_LINUX=""
 EOF
 
-
-## Creacion de usuarios
-echo "root:root" | chpasswd 
+echo "==> Regenerando grub.cfg..."
+grub-mkconfig -o /boot/grub/grub.cfg
